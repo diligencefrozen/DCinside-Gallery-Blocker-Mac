@@ -6,8 +6,8 @@
 // @author       diligencefrozen
 // @match        https://*.dcinside.com/*
 // @icon         https://www.dcinside.com/favicon.ico
-// @downloadURL  https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/dcinside-gallery-blocker.user.js
-// @updateURL    https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/dcinside-gallery-blocker.user.js
+// @downloadURL  https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/main.user.js
+// @updateURL    https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/main.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
