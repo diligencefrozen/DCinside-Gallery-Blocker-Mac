@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         디시갤 차단기 (Safari/Tampermonkey)
 // @namespace    https://github.com/diligencefrozen/DCinside-Gallery-Blocker-Mac
-// @version      07132025.3
+// @version      07132025.4
 // @description  디시인사이드 특정 갤러리를 접속 시, 자동으로 메인 페이지로 리다이렉트 합니다.
 // @author       diligencefrozen
 // @match        https://*.dcinside.com/*
 // @icon         https://www.dcinside.com/favicon.ico
+// @downloadURL  https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/dcinside-gallery-blocker.user.js
+// @updateURL    https://raw.githubusercontent.com/diligencefrozen/DCinside-Gallery-Blocker-Mac/main/dcinside-gallery-blocker.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
@@ -16,7 +18,7 @@
 if (window.top !== window) return;   // 최상위 문서가 아니면 바로 종료
 // ────────────────────────────────────────────────
 
-/* ───────────────── 기본,동적 설정 ───────────────── */
+/* ───────────────── 기본·동적 설정 ───────────────── */
 const builtinBlocked  = ["dcbest"];  // 항상 차단되는 기본 갤러리
 const recommendedIds = [
   "4year_university","alliescon","asdf12","canada","centristconservatis",
@@ -39,7 +41,119 @@ const DEFAULTS = {
   ]
 };
 
-/* ─────────────역 */
+/* ───────────────── 헬퍼 (저장/불러오기) ───────────────── */
+const S = new Proxy({}, {
+  get(_, key){ return GM_getValue(key, DEFAULTS[key]); },
+  set(_, key, val){ GM_setValue(key, val); return true; }
+});
+
+/* ───────────────── 차단 갤러리 처리 ───────────────── */
+function handleUrl() {
+  if (!S.enabled) return;
+
+  const gid = new URLSearchParams(location.search).get("id")?.trim().toLowerCase();
+  const blockedSet = new Set([
+    ...builtinBlocked,
+    ...S.blockedIds.map(v => v.toLowerCase())
+  ]);
+
+  if (!gid || !blockedSet.has(gid)) return;
+  if (document.getElementById("dcblock-overlay")) return; // 중복 실행 방지
+  showOverlayAndRedirect();
+}
+
+function showOverlayAndRedirect(){
+  /* 즉시 이동 */
+  if (S.delay === 0){
+    location.replace("https://www.dcinside.com");
+    return;
+  }
+
+  /* 오버레이 UI */
+  const ov = document.createElement("div");
+  ov.id = "dcblock-overlay";
+  Object.assign(ov.style,{
+    position:"fixed", inset:0, zIndex:2147483647,
+    background:"rgba(0,0,0,0.9)", color:"#fff",
+    display:"flex", flexDirection:"column",
+    justifyContent:"center", alignItems:"center",
+    fontFamily:"Inter, sans-serif", fontSize:"24px",
+    lineHeight:1.5, textAlign:"center", padding:"1.5rem"
+  });
+  document.documentElement.appendChild(ov);
+
+  /* 안내 문구 + 카운트다운 구성 */
+  const msgTop = document.createElement("div");
+  msgTop.textContent = "이 갤러리는 차단되었습니다.";
+  ov.append(msgTop);
+
+  const span = document.createElement("span");
+  span.style.fontSize = "32px";
+  span.style.fontWeight = "600";
+  ov.append(span);
+
+  const msgBottom = document.createElement("div");
+  msgBottom.textContent = "초 후 메인 페이지로 이동합니다";
+  ov.append(msgBottom);
+
+  let sec = Math.round(S.delay);
+  span.textContent = sec;
+
+  const timer = setInterval(() => {
+    if (--sec <= 0){
+      clearInterval(timer);
+      location.replace("https://www.dcinside.com");
+    } else {
+      span.textContent = sec;
+    }
+  }, 1000);
+}
+
+/* pushState / replaceState / popstate 감지 (SPA 대응) */
+["pushState","replaceState"].forEach(fn => {
+  const orig = history[fn];
+  history[fn] = function(...args){
+    const ret = orig.apply(this, args);
+    handleUrl();
+    return ret;
+  };
+});
+addEventListener("popstate", handleUrl);
+if (document.readyState !== "loading") handleUrl();
+else addEventListener("DOMContentLoaded", handleUrl);
+
+/* ───────────────── 메인 페이지 클린업 ───────────────── */
+function applyRemoveSelectors() {
+  const selectors = S.removeSelectors;
+  if (!selectors.length) return;
+
+  /* style 태그 삽입해서 강제 숨김 */
+  let style = document.getElementById("dcb-clean-style");
+  if (!style){
+    style = document.createElement("style");
+    style.id = "dcb-clean-style";
+    document.documentElement.appendChild(style);
+  }
+  style.textContent = selectors.map(s => `${s}{display:none!important}`).join("\n");
+
+  /* 이미 렌더된 노드 즉시 제거 */
+  selectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.remove()));
+
+  /* 동적 로딩 요소 대응 – MutationObserver */
+  if (!applyRemoveSelectors.observer){
+    const obs = new MutationObserver(() => {
+      selectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.remove()));
+    });
+    obs.observe(document.body, {childList:true, subtree:true});
+    applyRemoveSelectors.observer = obs;
+  }
+}
+if (document.readyState !== "loading") applyRemoveSelectors();
+else addEventListener("DOMContentLoaded", applyRemoveSelectors);
+
+/* ───────────────────── 메뉴 명령 ───────────────────── */
+
+/* 기능 토글 */
 GM_registerMenuCommand(
   S.enabled ? "❌ 차단 기능 끄기" : "✅ 차단 기능 켜기",
   () => {
@@ -108,3 +222,4 @@ GM_registerMenuCommand("📂 셀렉터 목록·삭제", () => {
   S.removeSelectors = list.filter(v => !del.includes(v));
   alert("삭제 완료! (새로고침 필요)");
 });
+```
